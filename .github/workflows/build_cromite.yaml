@@ -17,15 +17,15 @@ on:
       sha:
         description: 'uazo/cromite SHA'
         required: true
-        default: ''
+        default: '3724efc6ede3d2d94611c1fe71d1b090ebbb40a7'
       target_os:
         description: 'targetos [android/win/linux/all]'
         required: true
-        default: 'all'
+        default: 'android'
       build:
         description: 'android arch [arm/arm64/x64/all]'
         required: true
-        default: 'all'
+        default: 'arm64'
       type:
         description: 'runner? [dev/ci]'
         required: true
@@ -52,7 +52,7 @@ jobs:
         uses: actions/checkout@v2
         with:
           path: cromite
-          ref: ${{ github.event.inputs.sha }}
+          ref: ${{ github.ref_name }}
           fetch-depth: 1
 
       - name: Enable proxy on container
@@ -117,12 +117,12 @@ jobs:
       - name: Building cromite container ${{ env.VERSION }}-${{ env.CROMITE_SHA }}
         shell: bash
         run: |
-          docker pull uazo/cromite:$VERSION-$CROMITE_SHA || true
-          IS_PRESENT=$(docker inspect --type=image uazo/cromite:$VERSION-$CROMITE_SHA > /dev/null ; echo $?)
+          docker pull uazo/cromite:$VERSION-$CROMITE_SHA-tinyfish || true
+          IS_PRESENT=$(docker inspect --type=image uazo/cromite:$VERSION-$CROMITE_SHA-tinyfish > /dev/null ; echo $?)
           if [ $IS_PRESENT -ne "0" ]; then
-            IS_PRESENT=$(./regctl image inspect uazo/cromite:$VERSION-$CROMITE_SHA > /dev/null ; echo $?)
+            IS_PRESENT=$(./regctl image inspect uazo/cromite:$VERSION-$CROMITE_SHA-tinyfish > /dev/null ; echo $?)
             if [ $IS_PRESENT -ne "0" ]; then
-              DOCKER_BUILDKIT=1 docker build -t uazo/cromite:$VERSION-$CROMITE_SHA --progress plain \
+              DOCKER_BUILDKIT=1 docker build -t uazo/cromite:$VERSION-$CROMITE_SHA-tinyfish --progress plain \
                 --build-arg CROMITE_SHA=$CROMITE_SHA \
                 --build-arg VERSION=$VERSION \
                 --build-arg HTTP_PROXY="$PROXY_ADDR" \
@@ -133,12 +133,12 @@ jobs:
       - name: Building cromite-build container ${{ env.VERSION }}-${{ env.CROMITE_SHA }}
         shell: bash
         run: |
-          docker pull uazo/cromite-build:$VERSION-$CROMITE_SHA || true
-          IS_PRESENT=$(docker inspect --type=image uazo/cromite-build:$VERSION-$CROMITE_SHA > /dev/null ; echo $?)
+          docker pull uazo/cromite-build:$VERSION-$CROMITE_SHA-tinyfish || true
+          IS_PRESENT=$(docker inspect --type=image uazo/cromite-build:$VERSION-$CROMITE_SHA-tinyfish > /dev/null ; echo $?)
           if [ $IS_PRESENT -ne "0" ]; then
-            IS_PRESENT=$(./regctl image inspect uazo/cromite-build:$VERSION-$CROMITE_SHA > /dev/null ; echo $?)
+            IS_PRESENT=$(./regctl image inspect uazo/cromite-build:$VERSION-$CROMITE_SHA-tinyfish > /dev/null ; echo $?)
             if [ $IS_PRESENT -ne "0" ]; then
-              DOCKER_BUILDKIT=1 docker build -t uazo/cromite-build:$VERSION-$CROMITE_SHA --progress plain \
+              DOCKER_BUILDKIT=1 docker build -t uazo/cromite-build:$VERSION-$CROMITE_SHA-tinyfish --progress plain \
                 --build-arg CROMITE_SHA=$CROMITE_SHA \
                 --build-arg VERSION=$VERSION \
                 --build-arg HTTP_PROXY="$PROXY_ADDR" \
@@ -150,9 +150,9 @@ jobs:
       - name: Get uazo/cromite-build from docker hub if present
         shell: bash
         run: |
-          IS_PRESENT=$(./regctl image inspect uazo/cromite-build:$VERSION-$CROMITE_SHA > /dev/null ; echo $?)
+          IS_PRESENT=$(./regctl image inspect uazo/cromite-build:$VERSION-$CROMITE_SHA-tinyfish > /dev/null ; echo $?)
           if [ $IS_PRESENT -eq "0" ]; then
-            docker pull uazo/cromite-build:$VERSION-$CROMITE_SHA
+            docker pull uazo/cromite-build:$VERSION-$CROMITE_SHA-tinyfish
           fi
 
       - name: Mark image to build
@@ -162,7 +162,7 @@ jobs:
           if [ $IS_PRESENT -eq "0" ]; then
             docker rmi uazo/cromite-build:build
           fi
-          docker tag uazo/cromite-build:$VERSION-$CROMITE_SHA uazo/cromite-build:build
+          docker tag uazo/cromite-build:$VERSION-$CROMITE_SHA-tinyfish uazo/cromite-build:build
 
   build:
     runs-on: ${{ github.event.inputs.type }}
@@ -189,9 +189,6 @@ jobs:
         # compile in debug mode
         TARGET_ISDEBUG: ${{ github.event.inputs.debug }}
         TARGET_OS: ${{ github.event.inputs.target_os }}
-        USE_KEYSTORE: true
-        KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-        CROMITE_PREF_HASH_SEED_BIN: ${{ secrets.CROMITE_PREF_HASH_SEED_BIN }}
       volumes:
         - /storage/images/${{ github.event.inputs.sha }}/android/${{ github.event.inputs.debug }}/arm:/home/lg/working_dir/chromium/src/out/arm
         - /storage/images/${{ github.event.inputs.sha }}/android/${{ github.event.inputs.debug }}/arm64:/home/lg/working_dir/chromium/src/out/arm64
@@ -256,12 +253,7 @@ jobs:
           sudo chmod g-rxw /run/user/1000/
           sudo chmod o-rxw /run/user/1000/
 
-          # prepare keystore
-          echo "::group::-------- prepare keystore"
-          cd $WORKSPACE
-          echo "${{ secrets.KEYSTORE }}" > cromite.keystore.asc
-          gpg --homedir ./ -d --passphrase "${{ secrets.KEYSTORE_PASSPHRASE }}" --batch cromite.keystore.asc > cromite.keystore
-          echo "::endgroup::"
+# Use Chromium's built-in developer signing key; no private signing secret required.
 
           # bootstrap python3 for gn
           echo ../../../../../usr/bin >$WORKSPACE/depot_tools/python3_bin_reldir.txt
@@ -467,3 +459,11 @@ jobs:
               -t compdb cc cxx objc objcxx >$WORKSPACE/chromium/src/out/clangd/compile_commands.json && \
             /home/lg/working_dir/clangd_snapshot_20250518/bin/clangd-indexer --executor=all-TUs out/clangd/compile_commands.json >out/arm64/cromite.idx && \
             rm -rf out/clangd
+      - name: Upload TinyFish Browser Android arm64 APK
+        if: ${{ github.event.inputs.target_os == 'android' && github.event.inputs.build == 'arm64' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: TinyFish-Browser-Android-arm64
+          path: /home/lg/working_dir/chromium/src/out/arm64/apks/ChromePublic.apk
+          if-no-files-found: error
+          retention-days: 14
