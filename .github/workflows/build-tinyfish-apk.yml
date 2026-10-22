@@ -96,14 +96,16 @@ jobs:
           else:
               app_tag = app_tag[:-1].rstrip() + ' android:label="TinyFish Browser">'
           text = text[:app_match.start()] + app_tag + text[app_match.end():]
-          if not re.search(r'\\bxmlns:android\\s*=', text):
-              text, n = re.subn(
-                  r'(<manifest\\b)',
-                  r'\\1 xmlns:android="http://schemas.android.com/apk/res/android"',
-                  text, count=1, flags=re.S
-              )
-              if n != 1:
-                  raise SystemExit("Could not declare Android XML namespace")
+          root_start = text.find("<manifest")
+          if root_start < 0:
+              raise SystemExit("Could not locate manifest root tag")
+          root_end = text.find(">", root_start)
+          if root_end < 0:
+              raise SystemExit("Could not locate manifest root tag end")
+          root_tag = text[root_start:root_end]
+          if "xmlns:android" not in root_tag:
+              insert_at = root_start + len("<manifest")
+              text = text[:insert_at] + ' xmlns:android="http://schemas.android.com/apk/res/android"' + text[insert_at:]
           manifest.write_text(text, encoding="utf-8")
 
           # Update matching literal provider authorities and package constants in
