@@ -79,14 +79,16 @@ jobs:
           )
           if n != 1:
               raise SystemExit("Could not update package ID")
-          app_match = re.search(r'<application\\b[^>]*>', text, re.S)
+          app_match = re.search(r'<application\b[^>]*>', text, re.S)
           if not app_match:
-              raise SystemExit("Could not find application element")
+              # Include a short safe diagnostic rather than silently guessing.
+              sample = text[text.find("<application")-80:text.find("<application")+300]
+              raise SystemExit("Could not find application element; manifest excerpt: " + repr(sample))
           app_tag = app_match.group(0)
-          if re.search(r'\\bandroid:label\\s*=\\s*"[^"]*"', app_tag):
+          if re.search(r'\bandroid:label\s*=\s*"[^"]*"', app_tag):
               app_tag, n = re.subn(
-                  r'(\\bandroid:label\\s*=\\s*")[^"]*(")',
-                  r'\\g<1>TinyFish Browser\\2',
+                  r'(\bandroid:label\s*=\s*")[^"]*(")',
+                  r'\g<1>TinyFish Browser\2',
                   app_tag, count=1, flags=re.S
               )
               if n != 1:
