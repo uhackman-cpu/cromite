@@ -49,6 +49,8 @@ env:
   TARGET_OS: ${{ github.event.inputs.target_os || 'android' }}
   TARGET_BUILD: ${{ github.event.inputs.build || 'arm64' }}
   RUNNER_TYPE: ${{ github.event.inputs.type || 'ci' }}
+  DEBUG_MODE: ${{ github.event.inputs.debug || 'false' }}
+  CLANGD_MODE: ${{ github.event.inputs.clangd || 'false' }}
   REMOVEDOCKERSUPPORT: true
   USELOCALIMAGE: true
 
@@ -195,15 +197,15 @@ jobs:
         WINDOWSSDKDIR: "/win_sdk/sdks/28000/Windows Kits/10/"
         GYP_MSVS_OVERRIDE_PATH: /win_sdk/sdks/28000/
         # compile in debug mode
-        TARGET_ISDEBUG: ${{ github.event.inputs.debug }}
+        TARGET_ISDEBUG: ${{ env.DEBUG_MODE }}
         TARGET_OS: ${{ env.TARGET_OS }}
       volumes:
-        - /storage/images/${{ env.CROMITE_SHA }}/android/${{ github.event.inputs.debug }}/arm:/home/lg/working_dir/chromium/src/out/arm
-        - /storage/images/${{ env.CROMITE_SHA }}/android/${{ github.event.inputs.debug }}/arm64:/home/lg/working_dir/chromium/src/out/arm64
-        - /storage/images/${{ env.CROMITE_SHA }}/android/${{ github.event.inputs.debug }}/x64:/home/lg/working_dir/chromium/src/out/x64
-        - /storage/images/${{ env.CROMITE_SHA }}/linux/${{ github.event.inputs.debug }}/lin64:/home/lg/working_dir/chromium/src/out/lin64
+        - /storage/images/${{ env.CROMITE_SHA }}/android/${{ env.DEBUG_MODE }}/arm:/home/lg/working_dir/chromium/src/out/arm
+        - /storage/images/${{ env.CROMITE_SHA }}/android/${{ env.DEBUG_MODE }}/arm64:/home/lg/working_dir/chromium/src/out/arm64
+        - /storage/images/${{ env.CROMITE_SHA }}/android/${{ env.DEBUG_MODE }}/x64:/home/lg/working_dir/chromium/src/out/x64
+        - /storage/images/${{ env.CROMITE_SHA }}/linux/${{ env.DEBUG_MODE }}/lin64:/home/lg/working_dir/chromium/src/out/lin64
         - /storage/images/${{ env.CROMITE_SHA }}/win/x64:/home/lg/working_dir/chromium/src/out/win64
-        - /storage/images/${{ env.CROMITE_SHA }}/android/${{ github.event.inputs.debug }}/arm64_webview:/home/lg/working_dir/chromium/src/out/arm64_webview
+        - /storage/images/${{ env.CROMITE_SHA }}/android/${{ env.DEBUG_MODE }}/arm64_webview:/home/lg/working_dir/chromium/src/out/arm64_webview
         - /tmp/proxy:/tmp/proxy
         - /win_sdk:/win_sdk
 
@@ -261,13 +263,13 @@ jobs:
           sudo chmod g-rxw /run/user/1000/
           sudo chmod o-rxw /run/user/1000/
 
-# Use Chromium's built-in developer signing key; no private signing secret required.
+          # Use Chromium's built-in developer signing key; no private signing secret required.
 
           # bootstrap python3 for gn
           echo ../../../../../usr/bin >$WORKSPACE/depot_tools/python3_bin_reldir.txt
 
       - name: Build Cromite Android x64
-        if: ${{ (github.event.inputs.target_os == 'android' || github.event.inputs.target_os == 'all') && (github.event.inputs.build == 'x64' || github.event.inputs.build == 'all') }}
+        if: ${{ (env.TARGET_OS == 'android' || env.TARGET_OS == 'all') && (env.TARGET_BUILD == 'x64' || env.TARGET_BUILD == 'all') }}
         shell: bash
         run: |
           PATH=$WORKSPACE/chromium/src/third_party/llvm-build/Release+Asserts/bin:$WORKSPACE/depot_tools/:/usr/local/go/bin:$WORKSPACE/mtool/bin:$PATH
@@ -288,7 +290,7 @@ jobs:
           cp ../../cromite/build/RELEASE out/x64
 
       - name: Get ninja logs Android x64
-        if: ${{ (github.event.inputs.target_os == 'android' || github.event.inputs.target_os == 'all') && (github.event.inputs.build == 'x64' || github.event.inputs.build == 'all') }}
+        if: ${{ (env.TARGET_OS == 'android' || env.TARGET_OS == 'all') && (env.TARGET_BUILD == 'x64' || env.TARGET_BUILD == 'all') }}
         shell: bash
         run: |
           cd $WORKSPACE
@@ -296,7 +298,7 @@ jobs:
           python3 $WORKSPACE/chromium/src/third_party/catapult/tracing/bin/trace2html $WORKSPACE/chromium/src/out/x64/ninja_log_trace.json
 
       - name: Build Cromite Windows x64
-        if: ${{ github.event.inputs.target_os == 'win' || github.event.inputs.target_os == 'all' }}
+        if: ${{ env.TARGET_OS == 'win' || env.TARGET_OS == 'all' }}
         shell: bash
         run: |
           PATH=$WORKSPACE/chromium/src/third_party/llvm-build/Release+Asserts/bin:$WORKSPACE/depot_tools/:/usr/local/go/bin:$WORKSPACE/mtool/bin:$PATH
@@ -316,7 +318,7 @@ jobs:
           cp ../../cromite/build/RELEASE out/win64
 
       - name: Get ninja logs Windows x64
-        if: ${{ github.event.inputs.target_os == 'win' || github.event.inputs.target_os == 'all' }}
+        if: ${{ env.TARGET_OS == 'win' || env.TARGET_OS == 'all' }}
         shell: bash
         run: |
           cd $WORKSPACE
@@ -324,7 +326,7 @@ jobs:
           python3 $WORKSPACE/chromium/src/third_party/catapult/tracing/bin/trace2html $WORKSPACE/chromium/src/out/win64/ninja_log_trace.json
 
       - name: Build Cromite Android arm64
-        if: ${{ (github.event.inputs.target_os == 'android' || github.event.inputs.target_os == 'all') && (github.event.inputs.build == 'arm64' || github.event.inputs.build == 'all') }}
+        if: ${{ (env.TARGET_OS == 'android' || env.TARGET_OS == 'all') && (env.TARGET_BUILD == 'arm64' || env.TARGET_BUILD == 'all') }}
         shell: bash
         run: |
           PATH=$WORKSPACE/chromium/src/third_party/llvm-build/Release+Asserts/bin:$WORKSPACE/depot_tools/:/usr/local/go/bin:$WORKSPACE/mtool/bin:$PATH
@@ -345,7 +347,7 @@ jobs:
           cp ../../cromite/build/RELEASE out/arm64
 
       - name: Get ninja logs Android arm64
-        if: ${{ (github.event.inputs.target_os == 'android' || github.event.inputs.target_os == 'all') && (github.event.inputs.build == 'arm64' || github.event.inputs.build == 'all') }}
+        if: ${{ (env.TARGET_OS == 'android' || env.TARGET_OS == 'all') && (env.TARGET_BUILD == 'arm64' || env.TARGET_BUILD == 'all') }}
         shell: bash
         run: |
           cd $WORKSPACE
@@ -353,7 +355,7 @@ jobs:
           python3 $WORKSPACE/chromium/src/third_party/catapult/tracing/bin/trace2html $WORKSPACE/chromium/src/out/arm64/ninja_log_trace.json
 
       - name: Generate breakpad symbols for Android arm64
-        if: ${{ (github.event.inputs.target_os == 'android' || github.event.inputs.target_os == 'all') && (github.event.inputs.build == 'arm64' || github.event.inputs.build == 'all') }}
+        if: ${{ (env.TARGET_OS == 'android' || env.TARGET_OS == 'all') && (env.TARGET_BUILD == 'arm64' || env.TARGET_BUILD == 'all') }}
         shell: bash
         run: |
           PATH=$WORKSPACE/chromium/src/third_party/llvm-build/Release+Asserts/bin:$WORKSPACE/depot_tools/:/usr/local/go/bin:$WORKSPACE/mtool/bin:$PATH
@@ -370,7 +372,7 @@ jobs:
           echo "::endgroup::"
 
       - name: Generate Supersize data for Android arm64
-        if: ${{ github.event.inputs.debug == 'false' && (github.event.inputs.target_os == 'android' || github.event.inputs.target_os == 'all') && (github.event.inputs.build == 'arm64' || github.event.inputs.build == 'all') }}
+        if: ${{ env.DEBUG_MODE == 'false' && (env.TARGET_OS == 'android' || env.TARGET_OS == 'all') && (env.TARGET_BUILD == 'arm64' || env.TARGET_BUILD == 'all') }}
         shell: bash
         run: |
           PATH=$WORKSPACE/chromium/src/third_party/llvm-build/Release+Asserts/bin:$WORKSPACE/depot_tools/:/usr/local/go/bin:$WORKSPACE/mtool/bin:$PATH
@@ -379,7 +381,7 @@ jobs:
           python3 tools/binary_size/libsupersize/main.py archive out/arm64/chrome.size --apk-file out/arm64/apks/ChromePublic.apk -v
 
       - name: Build Cromite Android arm
-        if: ${{ (github.event.inputs.target_os == 'android' || github.event.inputs.target_os == 'all') && (github.event.inputs.build == 'arm' || github.event.inputs.build == 'all') }}
+        if: ${{ (env.TARGET_OS == 'android' || env.TARGET_OS == 'all') && (env.TARGET_BUILD == 'arm' || env.TARGET_BUILD == 'all') }}
         shell: bash
         run: |
           PATH=$WORKSPACE/chromium/src/third_party/llvm-build/Release+Asserts/bin:$WORKSPACE/depot_tools/:/usr/local/go/bin:$WORKSPACE/mtool/bin:$PATH
@@ -400,7 +402,7 @@ jobs:
           cp ../../cromite/build/RELEASE out/arm
 
       - name: Get ninja logs Android arm
-        if: ${{ (github.event.inputs.target_os == 'android' || github.event.inputs.target_os == 'all') && (github.event.inputs.build == 'arm' || github.event.inputs.build == 'all') }}
+        if: ${{ (env.TARGET_OS == 'android' || env.TARGET_OS == 'all') && (env.TARGET_BUILD == 'arm' || env.TARGET_BUILD == 'all') }}
         shell: bash
         run: |
           cd $WORKSPACE
@@ -408,7 +410,7 @@ jobs:
           python3 $WORKSPACE/chromium/src/third_party/catapult/tracing/bin/trace2html $WORKSPACE/chromium/src/out/arm/ninja_log_trace.json
 
       - name: Build Cromite Linux 64
-        if: ${{ (github.event.inputs.target_os == 'linux' || github.event.inputs.target_os == 'all') }}
+        if: ${{ (env.TARGET_OS == 'linux' || env.TARGET_OS == 'all') }}
         shell: bash
         run: |
           PATH=$WORKSPACE/chromium/src/third_party/llvm-build/Release+Asserts/bin:$WORKSPACE/depot_tools/:/usr/local/go/bin:$WORKSPACE/mtool/bin:$PATH
@@ -428,7 +430,7 @@ jobs:
           cp ../../cromite/build/RELEASE out/lin64
 
       - name: Get ninja logs Linux 64
-        if: ${{ (github.event.inputs.target_os == 'linux' || github.event.inputs.target_os == 'all') }}
+        if: ${{ (env.TARGET_OS == 'linux' || env.TARGET_OS == 'all') }}
         shell: bash
         run: |
           cd $WORKSPACE
@@ -454,7 +456,7 @@ jobs:
           cp ../../cromite/build/RELEASE out/arm64_webview
 
       - name: Generate clangd index for Android arm64
-        if: ${{ github.event.inputs.clangd == 'true' }}
+        if: ${{ env.CLANGD_MODE == 'true' }}
         shell: bash
         run: |
           PATH=$WORKSPACE/chromium/src/third_party/llvm-build/Release+Asserts/bin:$WORKSPACE/depot_tools/:/usr/local/go/bin:$WORKSPACE/mtool/bin:$PATH
@@ -468,7 +470,7 @@ jobs:
             /home/lg/working_dir/clangd_snapshot_20250518/bin/clangd-indexer --executor=all-TUs out/clangd/compile_commands.json >out/arm64/cromite.idx && \
             rm -rf out/clangd
       - name: Upload TinyFish Browser Android arm64 APK
-        if: ${{ github.event.inputs.target_os == 'android' && github.event.inputs.build == 'arm64' }}
+        if: ${{ env.TARGET_OS == 'android' && env.TARGET_BUILD == 'arm64' }}
         uses: actions/upload-artifact@v4
         with:
           name: TinyFish-Browser-Android-arm64
