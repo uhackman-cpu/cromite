@@ -79,13 +79,21 @@ jobs:
           )
           if n != 1:
               raise SystemExit("Could not update package ID")
-          text, n = re.subn(
-              r'(<application\b[^>]*?\bandroid:label=")[^"]*(")',
-              r'\g<1>TinyFish Browser\2',
-              text, count=1, flags=re.S
-          )
-          if n != 1:
-              raise SystemExit("Could not update application label")
+          app_match = re.search(r'<application\\b[^>]*>', text, re.S)
+          if not app_match:
+              raise SystemExit("Could not find application element")
+          app_tag = app_match.group(0)
+          if re.search(r'\\bandroid:label\\s*=\\s*"[^"]*"', app_tag):
+              app_tag, n = re.subn(
+                  r'(\\bandroid:label\\s*=\\s*")[^"]*(")',
+                  r'\\g<1>TinyFish Browser\\2',
+                  app_tag, count=1, flags=re.S
+              )
+              if n != 1:
+                  raise SystemExit("Could not replace application label")
+          else:
+              app_tag = app_tag[:-1].rstrip() + ' android:label="TinyFish Browser">'
+          text = text[:app_match.start()] + app_tag + text[app_match.end():]
           manifest.write_text(text, encoding="utf-8")
 
           # Update matching literal provider authorities and package constants in
