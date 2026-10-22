@@ -12,6 +12,11 @@ permissions:
   statuses: none
 
 on:
+  push:
+    branches:
+      - automation/tinyfish-browser
+    paths:
+      - .github/workflows/build_cromite.yaml
   workflow_dispatch:
     inputs:
       sha:
@@ -40,13 +45,16 @@ on:
         default: 'false'
 
 env:
-  CROMITE_SHA: ${{ github.event.inputs.sha }}
+  CROMITE_SHA: ${{ github.event.inputs.sha || '3724efc6ede3d2d94611c1fe71d1b090ebbb40a7' }}
+  TARGET_OS: ${{ github.event.inputs.target_os || 'android' }}
+  TARGET_BUILD: ${{ github.event.inputs.build || 'arm64' }}
+  RUNNER_TYPE: ${{ github.event.inputs.type || 'ci' }}
   REMOVEDOCKERSUPPORT: true
   USELOCALIMAGE: true
 
 jobs:
   check_images:
-    runs-on: ${{ github.event.inputs.type }}
+    runs-on: ${{ env.RUNNER_TYPE }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@v2
@@ -165,7 +173,7 @@ jobs:
           docker tag uazo/cromite-build:$VERSION-$CROMITE_SHA-tinyfish uazo/cromite-build:build
 
   build:
-    runs-on: ${{ github.event.inputs.type }}
+    runs-on: ${{ env.RUNNER_TYPE }}
     needs: check_images
     if: success()
     timeout-minutes: 1440
@@ -188,14 +196,14 @@ jobs:
         GYP_MSVS_OVERRIDE_PATH: /win_sdk/sdks/28000/
         # compile in debug mode
         TARGET_ISDEBUG: ${{ github.event.inputs.debug }}
-        TARGET_OS: ${{ github.event.inputs.target_os }}
+        TARGET_OS: ${{ env.TARGET_OS }}
       volumes:
-        - /storage/images/${{ github.event.inputs.sha }}/android/${{ github.event.inputs.debug }}/arm:/home/lg/working_dir/chromium/src/out/arm
-        - /storage/images/${{ github.event.inputs.sha }}/android/${{ github.event.inputs.debug }}/arm64:/home/lg/working_dir/chromium/src/out/arm64
-        - /storage/images/${{ github.event.inputs.sha }}/android/${{ github.event.inputs.debug }}/x64:/home/lg/working_dir/chromium/src/out/x64
-        - /storage/images/${{ github.event.inputs.sha }}/linux/${{ github.event.inputs.debug }}/lin64:/home/lg/working_dir/chromium/src/out/lin64
-        - /storage/images/${{ github.event.inputs.sha }}/win/x64:/home/lg/working_dir/chromium/src/out/win64
-        - /storage/images/${{ github.event.inputs.sha }}/android/${{ github.event.inputs.debug }}/arm64_webview:/home/lg/working_dir/chromium/src/out/arm64_webview
+        - /storage/images/${{ env.CROMITE_SHA }}/android/${{ github.event.inputs.debug }}/arm:/home/lg/working_dir/chromium/src/out/arm
+        - /storage/images/${{ env.CROMITE_SHA }}/android/${{ github.event.inputs.debug }}/arm64:/home/lg/working_dir/chromium/src/out/arm64
+        - /storage/images/${{ env.CROMITE_SHA }}/android/${{ github.event.inputs.debug }}/x64:/home/lg/working_dir/chromium/src/out/x64
+        - /storage/images/${{ env.CROMITE_SHA }}/linux/${{ github.event.inputs.debug }}/lin64:/home/lg/working_dir/chromium/src/out/lin64
+        - /storage/images/${{ env.CROMITE_SHA }}/win/x64:/home/lg/working_dir/chromium/src/out/win64
+        - /storage/images/${{ env.CROMITE_SHA }}/android/${{ github.event.inputs.debug }}/arm64_webview:/home/lg/working_dir/chromium/src/out/arm64_webview
         - /tmp/proxy:/tmp/proxy
         - /win_sdk:/win_sdk
 
