@@ -20,8 +20,15 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Set up Android SDK build tools
-        uses: android-actions/setup-android@v3
+      - name: Install Android SDK build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then SDKMANAGER="$(command -v sdkmanager)"; fi
+          "$SDKMANAGER" --version
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" 'build-tools;36.0.0'
 
       - name: Download and verify official Cromite ARM64 base
         shell: bash
