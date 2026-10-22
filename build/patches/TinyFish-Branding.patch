@@ -1,0 +1,22 @@
+From: TinyFish Browser maintainers
+Date: Thu, 22 Oct 2026 00:00:00 +0530
+Subject: [PATCH] Rename Android app label to TinyFish Browser
+
+License: GPL-3.0-only - https://spdx.org/licenses/GPL-3.0-only.html
+---
+ chrome/android/java/AndroidManifest.xml | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/chrome/android/java/AndroidManifest.xml b/chrome/android/java/AndroidManifest.xml
+--- a/chrome/android/java/AndroidManifest.xml
++++ b/chrome/android/java/AndroidManifest.xml
+@@ -198,7 +198,7 @@ by a child template that "extends" this file.
+       <application android:name="{% block application_name %}org.chromium.chrome.browser.base.SplitChromeApplication{% endblock %}"
+         android:icon="@drawable/ic_launcher"
+         android:roundIcon="@drawable/ic_launcher_round"
+-        android:label="{% block application_label %}@string/app_name{% endblock %}"
++        android:label="TinyFish Browser"
+         android:memtagMode="async"
+         android:largeHeap="false"
+         android:manageSpaceActivity="@string/manage_space_activity"
+-- 

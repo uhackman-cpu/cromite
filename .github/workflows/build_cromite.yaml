@@ -12,20 +12,25 @@ permissions:
   statuses: none
 
 on:
+  push:
+    branches:
+      - automation/tinyfish-browser
+    paths:
+      - .github/workflows/build_cromite.yaml
   workflow_dispatch:
     inputs:
       sha:
         description: 'uazo/cromite SHA'
         required: true
-        default: ''
+        default: '3724efc6ede3d2d94611c1fe71d1b090ebbb40a7'
       target_os:
         description: 'targetos [android/win/linux/all]'
         required: true
-        default: 'all'
+        default: 'android'
       build:
         description: 'android arch [arm/arm64/x64/all]'
         required: true
-        default: 'all'
+        default: 'arm64'
       type:
         description: 'runner? [dev/ci]'
         required: true
@@ -40,19 +45,24 @@ on:
         default: 'false'
 
 env:
-  CROMITE_SHA: ${{ github.event.inputs.sha }}
+  CROMITE_SHA: ${{ github.event.inputs.sha || '3724efc6ede3d2d94611c1fe71d1b090ebbb40a7' }}
+  TARGET_OS: ${{ github.event.inputs.target_os || 'android' }}
+  TARGET_BUILD: ${{ github.event.inputs.build || 'arm64' }}
+  RUNNER_TYPE: ${{ github.event.inputs.type || 'ci' }}
+  DEBUG_MODE: ${{ github.event.inputs.debug || 'false' }}
+  CLANGD_MODE: ${{ github.event.inputs.clangd || 'false' }}
   REMOVEDOCKERSUPPORT: true
   USELOCALIMAGE: true
 
 jobs:
   check_images:
-    runs-on: ${{ github.event.inputs.type }}
+    runs-on: ci
     steps:
       - name: Checkout repo
         uses: actions/checkout@v2
         with:
           path: cromite
-          ref: ${{ github.event.inputs.sha }}
+          ref: ${{ github.ref_name }}
           fetch-depth: 1
 
       - name: Enable proxy on container
@@ -117,12 +127,12 @@ jobs:
       - name: Building cromite container ${{ env.VERSION }}-${{ env.CROMITE_SHA }}
         shell: bash
         run: |
-          docker pull uazo/cromite:$VERSION-$CROMITE_SHA || true
-          IS_PRESENT=$(docker inspect --type=image uazo/cromite:$VERSION-$CROMITE_SHA > /dev/null ; echo $?)
+          docker pull uazo/cromite:$VERSION-$CROMITE_SHA-tinyfish || true
+          IS_PRESENT=$(docker inspect --type=image uazo/cromite:$VERSION-$CROMITE_SHA-tinyfish > /dev/null ; echo $?)
           if [ $IS_PRESENT -ne "0" ]; then
-            IS_PRESENT=$(./regctl image inspect uazo/cromite:$VERSION-$CROMITE_SHA > /dev/null ; echo $?)
+            IS_PRESENT=$(./regctl image inspect uazo/cromite:$VERSION-$CROMITE_SHA-tinyfish > /dev/null ; echo $?)
             if [ $IS_PRESENT -ne "0" ]; then
-              DOCKER_BUILDKIT=1 docker build -t uazo/cromite:$VERSION-$CROMITE_SHA --progress plain \
+              DOCKER_BUILDKIT=1 docker build -t uazo/cromite:$VERSION-$CROMITE_SHA-tinyfish --progress plain \
                 --build-arg CROMITE_SHA=$CROMITE_SHA \
                 --build-arg VERSION=$VERSION \
                 --build-arg HTTP_PROXY="$PROXY_ADDR" \
@@ -133,12 +143,12 @@ jobs:
       - name: Building cromite-build container ${{ env.VERSION }}-${{ env.CROMITE_SHA }}
         shell: bash
         run: |
-          docker pull uazo/cromite-build:$VERSION-$CROMITE_SHA || true
-          IS_PRESENT=$(docker inspect --type=image uazo/cromite-build:$VERSION-$CROMITE_SHA > /dev/null ; echo $?)
+          docker pull uazo/cromite-build:$VERSION-$CROMITE_SHA-tinyfish || true
+          IS_PRESENT=$(docker inspect --type=image uazo/cromite-build:$VERSION-$CROMITE_SHA-tinyfish > /dev/null ; echo $?)
           if [ $IS_PRESENT -ne "0" ]; then
-            IS_PRESENT=$(./regctl image inspect uazo/cromite-build:$VERSION-$CROMITE_SHA > /dev/null ; echo $?)
+            IS_PRESENT=$(./regctl image inspect uazo/cromite-build:$VERSION-$CROMITE_SHA-tinyfish > /dev/null ; echo $?)
             if [ $IS_PRESENT -ne "0" ]; then
-              DOCKER_BUILDKIT=1 docker build -t uazo/cromite-build:$VERSION-$CROMITE_SHA --progress plain \
+              DOCKER_BUILDKIT=1 docker build -t uazo/cromite-build:$VERSION-$CROMITE_SHA-tinyfish --progress plain \
                 --build-arg CROMITE_SHA=$CROMITE_SHA \
                 --build-arg VERSION=$VERSION \
                 --build-arg HTTP_PROXY="$PROXY_ADDR" \
@@ -150,9 +160,9 @@ jobs:
       - name: Get uazo/cromite-build from docker hub if present
         shell: bash
         run: |
-          IS_PRESENT=$(./regctl image inspect uazo/cromite-build:$VERSION-$CROMITE_SHA > /dev/null ; echo $?)
+          IS_PRESENT=$(./regctl image inspect uazo/cromite-build:$VERSION-$CROMITE_SHA-tinyfish > /dev/null ; echo $?)
           if [ $IS_PRESENT -eq "0" ]; then
-            docker pull uazo/cromite-build:$VERSION-$CROMITE_SHA
+            docker pull uazo/cromite-build:$VERSION-$CROMITE_SHA-tinyfish
           fi
 
       - name: Mark image to build
@@ -162,10 +172,10 @@ jobs:
           if [ $IS_PRESENT -eq "0" ]; then
             docker rmi uazo/cromite-build:build
           fi
-          docker tag uazo/cromite-build:$VERSION-$CROMITE_SHA uazo/cromite-build:build
+          docker tag uazo/cromite-build:$VERSION-$CROMITE_SHA-tinyfish uazo/cromite-build:build
 
   build:
-    runs-on: ${{ github.event.inputs.type }}
+    runs-on: ci
     needs: check_images
     if: success()
     timeout-minutes: 1440
@@ -187,18 +197,15 @@ jobs:
         WINDOWSSDKDIR: "/win_sdk/sdks/28000/Windows Kits/10/"
         GYP_MSVS_OVERRIDE_PATH: /win_sdk/sdks/28000/
         # compile in debug mode
-        TARGET_ISDEBUG: ${{ github.event.inputs.debug }}
-        TARGET_OS: ${{ github.event.inputs.target_os }}
-        USE_KEYSTORE: true
-        KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-        CROMITE_PREF_HASH_SEED_BIN: ${{ secrets.CROMITE_PREF_HASH_SEED_BIN }}
+        TARGET_ISDEBUG: ${{ github.event.inputs.debug || 'false' }}
+        TARGET_OS: ${{ github.event.inputs.target_os || 'android' }}
       volumes:
-        - /storage/images/${{ github.event.inputs.sha }}/android/${{ github.event.inputs.debug }}/arm:/home/lg/working_dir/chromium/src/out/arm
-        - /storage/images/${{ github.event.inputs.sha }}/android/${{ github.event.inputs.debug }}/arm64:/home/lg/working_dir/chromium/src/out/arm64
-        - /storage/images/${{ github.event.inputs.sha }}/android/${{ github.event.inputs.debug }}/x64:/home/lg/working_dir/chromium/src/out/x64
-        - /storage/images/${{ github.event.inputs.sha }}/linux/${{ github.event.inputs.debug }}/lin64:/home/lg/working_dir/chromium/src/out/lin64
-        - /storage/images/${{ github.event.inputs.sha }}/win/x64:/home/lg/working_dir/chromium/src/out/win64
-        - /storage/images/${{ github.event.inputs.sha }}/android/${{ github.event.inputs.debug }}/arm64_webview:/home/lg/working_dir/chromium/src/out/arm64_webview
+        - /storage/images/${{ github.event.inputs.sha || '3724efc6ede3d2d94611c1fe71d1b090ebbb40a7' }}/android/${{ github.event.inputs.debug || 'false' }}/arm:/home/lg/working_dir/chromium/src/out/arm
+        - /storage/images/${{ github.event.inputs.sha || '3724efc6ede3d2d94611c1fe71d1b090ebbb40a7' }}/android/${{ github.event.inputs.debug || 'false' }}/arm64:/home/lg/working_dir/chromium/src/out/arm64
+        - /storage/images/${{ github.event.inputs.sha || '3724efc6ede3d2d94611c1fe71d1b090ebbb40a7' }}/android/${{ github.event.inputs.debug || 'false' }}/x64:/home/lg/working_dir/chromium/src/out/x64
+        - /storage/images/${{ github.event.inputs.sha || '3724efc6ede3d2d94611c1fe71d1b090ebbb40a7' }}/linux/${{ github.event.inputs.debug || 'false' }}/lin64:/home/lg/working_dir/chromium/src/out/lin64
+        - /storage/images/${{ github.event.inputs.sha || '3724efc6ede3d2d94611c1fe71d1b090ebbb40a7' }}/win/x64:/home/lg/working_dir/chromium/src/out/win64
+        - /storage/images/${{ github.event.inputs.sha || '3724efc6ede3d2d94611c1fe71d1b090ebbb40a7' }}/android/${{ github.event.inputs.debug || 'false' }}/arm64_webview:/home/lg/working_dir/chromium/src/out/arm64_webview
         - /tmp/proxy:/tmp/proxy
         - /win_sdk:/win_sdk
 
@@ -256,18 +263,13 @@ jobs:
           sudo chmod g-rxw /run/user/1000/
           sudo chmod o-rxw /run/user/1000/
 
-          # prepare keystore
-          echo "::group::-------- prepare keystore"
-          cd $WORKSPACE
-          echo "${{ secrets.KEYSTORE }}" > cromite.keystore.asc
-          gpg --homedir ./ -d --passphrase "${{ secrets.KEYSTORE_PASSPHRASE }}" --batch cromite.keystore.asc > cromite.keystore
-          echo "::endgroup::"
+          # Use Chromium's built-in developer signing key; no private signing secret required.
 
           # bootstrap python3 for gn
           echo ../../../../../usr/bin >$WORKSPACE/depot_tools/python3_bin_reldir.txt
 
       - name: Build Cromite Android x64
-        if: ${{ (github.event.inputs.target_os == 'android' || github.event.inputs.target_os == 'all') && (github.event.inputs.build == 'x64' || github.event.inputs.build == 'all') }}
+        if: ${{ (env.TARGET_OS == 'android' || env.TARGET_OS == 'all') && (env.TARGET_BUILD == 'x64' || env.TARGET_BUILD == 'all') }}
         shell: bash
         run: |
           PATH=$WORKSPACE/chromium/src/third_party/llvm-build/Release+Asserts/bin:$WORKSPACE/depot_tools/:/usr/local/go/bin:$WORKSPACE/mtool/bin:$PATH
@@ -288,7 +290,7 @@ jobs:
           cp ../../cromite/build/RELEASE out/x64
 
       - name: Get ninja logs Android x64
-        if: ${{ (github.event.inputs.target_os == 'android' || github.event.inputs.target_os == 'all') && (github.event.inputs.build == 'x64' || github.event.inputs.build == 'all') }}
+        if: ${{ (env.TARGET_OS == 'android' || env.TARGET_OS == 'all') && (env.TARGET_BUILD == 'x64' || env.TARGET_BUILD == 'all') }}
         shell: bash
         run: |
           cd $WORKSPACE
@@ -296,7 +298,7 @@ jobs:
           python3 $WORKSPACE/chromium/src/third_party/catapult/tracing/bin/trace2html $WORKSPACE/chromium/src/out/x64/ninja_log_trace.json
 
       - name: Build Cromite Windows x64
-        if: ${{ github.event.inputs.target_os == 'win' || github.event.inputs.target_os == 'all' }}
+        if: ${{ env.TARGET_OS == 'win' || env.TARGET_OS == 'all' }}
         shell: bash
         run: |
           PATH=$WORKSPACE/chromium/src/third_party/llvm-build/Release+Asserts/bin:$WORKSPACE/depot_tools/:/usr/local/go/bin:$WORKSPACE/mtool/bin:$PATH
@@ -316,7 +318,7 @@ jobs:
           cp ../../cromite/build/RELEASE out/win64
 
       - name: Get ninja logs Windows x64
-        if: ${{ github.event.inputs.target_os == 'win' || github.event.inputs.target_os == 'all' }}
+        if: ${{ env.TARGET_OS == 'win' || env.TARGET_OS == 'all' }}
         shell: bash
         run: |
           cd $WORKSPACE
@@ -324,7 +326,7 @@ jobs:
           python3 $WORKSPACE/chromium/src/third_party/catapult/tracing/bin/trace2html $WORKSPACE/chromium/src/out/win64/ninja_log_trace.json
 
       - name: Build Cromite Android arm64
-        if: ${{ (github.event.inputs.target_os == 'android' || github.event.inputs.target_os == 'all') && (github.event.inputs.build == 'arm64' || github.event.inputs.build == 'all') }}
+        if: ${{ (env.TARGET_OS == 'android' || env.TARGET_OS == 'all') && (env.TARGET_BUILD == 'arm64' || env.TARGET_BUILD == 'all') }}
         shell: bash
         run: |
           PATH=$WORKSPACE/chromium/src/third_party/llvm-build/Release+Asserts/bin:$WORKSPACE/depot_tools/:/usr/local/go/bin:$WORKSPACE/mtool/bin:$PATH
@@ -345,7 +347,7 @@ jobs:
           cp ../../cromite/build/RELEASE out/arm64
 
       - name: Get ninja logs Android arm64
-        if: ${{ (github.event.inputs.target_os == 'android' || github.event.inputs.target_os == 'all') && (github.event.inputs.build == 'arm64' || github.event.inputs.build == 'all') }}
+        if: ${{ (env.TARGET_OS == 'android' || env.TARGET_OS == 'all') && (env.TARGET_BUILD == 'arm64' || env.TARGET_BUILD == 'all') }}
         shell: bash
         run: |
           cd $WORKSPACE
@@ -353,7 +355,7 @@ jobs:
           python3 $WORKSPACE/chromium/src/third_party/catapult/tracing/bin/trace2html $WORKSPACE/chromium/src/out/arm64/ninja_log_trace.json
 
       - name: Generate breakpad symbols for Android arm64
-        if: ${{ (github.event.inputs.target_os == 'android' || github.event.inputs.target_os == 'all') && (github.event.inputs.build == 'arm64' || github.event.inputs.build == 'all') }}
+        if: ${{ (env.TARGET_OS == 'android' || env.TARGET_OS == 'all') && (env.TARGET_BUILD == 'arm64' || env.TARGET_BUILD == 'all') }}
         shell: bash
         run: |
           PATH=$WORKSPACE/chromium/src/third_party/llvm-build/Release+Asserts/bin:$WORKSPACE/depot_tools/:/usr/local/go/bin:$WORKSPACE/mtool/bin:$PATH
@@ -370,7 +372,7 @@ jobs:
           echo "::endgroup::"
 
       - name: Generate Supersize data for Android arm64
-        if: ${{ github.event.inputs.debug == 'false' && (github.event.inputs.target_os == 'android' || github.event.inputs.target_os == 'all') && (github.event.inputs.build == 'arm64' || github.event.inputs.build == 'all') }}
+        if: ${{ env.DEBUG_MODE == 'false' && (env.TARGET_OS == 'android' || env.TARGET_OS == 'all') && (env.TARGET_BUILD == 'arm64' || env.TARGET_BUILD == 'all') }}
         shell: bash
         run: |
           PATH=$WORKSPACE/chromium/src/third_party/llvm-build/Release+Asserts/bin:$WORKSPACE/depot_tools/:/usr/local/go/bin:$WORKSPACE/mtool/bin:$PATH
@@ -379,7 +381,7 @@ jobs:
           python3 tools/binary_size/libsupersize/main.py archive out/arm64/chrome.size --apk-file out/arm64/apks/ChromePublic.apk -v
 
       - name: Build Cromite Android arm
-        if: ${{ (github.event.inputs.target_os == 'android' || github.event.inputs.target_os == 'all') && (github.event.inputs.build == 'arm' || github.event.inputs.build == 'all') }}
+        if: ${{ (env.TARGET_OS == 'android' || env.TARGET_OS == 'all') && (env.TARGET_BUILD == 'arm' || env.TARGET_BUILD == 'all') }}
         shell: bash
         run: |
           PATH=$WORKSPACE/chromium/src/third_party/llvm-build/Release+Asserts/bin:$WORKSPACE/depot_tools/:/usr/local/go/bin:$WORKSPACE/mtool/bin:$PATH
@@ -400,7 +402,7 @@ jobs:
           cp ../../cromite/build/RELEASE out/arm
 
       - name: Get ninja logs Android arm
-        if: ${{ (github.event.inputs.target_os == 'android' || github.event.inputs.target_os == 'all') && (github.event.inputs.build == 'arm' || github.event.inputs.build == 'all') }}
+        if: ${{ (env.TARGET_OS == 'android' || env.TARGET_OS == 'all') && (env.TARGET_BUILD == 'arm' || env.TARGET_BUILD == 'all') }}
         shell: bash
         run: |
           cd $WORKSPACE
@@ -408,7 +410,7 @@ jobs:
           python3 $WORKSPACE/chromium/src/third_party/catapult/tracing/bin/trace2html $WORKSPACE/chromium/src/out/arm/ninja_log_trace.json
 
       - name: Build Cromite Linux 64
-        if: ${{ (github.event.inputs.target_os == 'linux' || github.event.inputs.target_os == 'all') }}
+        if: ${{ (env.TARGET_OS == 'linux' || env.TARGET_OS == 'all') }}
         shell: bash
         run: |
           PATH=$WORKSPACE/chromium/src/third_party/llvm-build/Release+Asserts/bin:$WORKSPACE/depot_tools/:/usr/local/go/bin:$WORKSPACE/mtool/bin:$PATH
@@ -428,7 +430,7 @@ jobs:
           cp ../../cromite/build/RELEASE out/lin64
 
       - name: Get ninja logs Linux 64
-        if: ${{ (github.event.inputs.target_os == 'linux' || github.event.inputs.target_os == 'all') }}
+        if: ${{ (env.TARGET_OS == 'linux' || env.TARGET_OS == 'all') }}
         shell: bash
         run: |
           cd $WORKSPACE
@@ -454,7 +456,7 @@ jobs:
           cp ../../cromite/build/RELEASE out/arm64_webview
 
       - name: Generate clangd index for Android arm64
-        if: ${{ github.event.inputs.clangd == 'true' }}
+        if: ${{ env.CLANGD_MODE == 'true' }}
         shell: bash
         run: |
           PATH=$WORKSPACE/chromium/src/third_party/llvm-build/Release+Asserts/bin:$WORKSPACE/depot_tools/:/usr/local/go/bin:$WORKSPACE/mtool/bin:$PATH
@@ -467,3 +469,11 @@ jobs:
               -t compdb cc cxx objc objcxx >$WORKSPACE/chromium/src/out/clangd/compile_commands.json && \
             /home/lg/working_dir/clangd_snapshot_20250518/bin/clangd-indexer --executor=all-TUs out/clangd/compile_commands.json >out/arm64/cromite.idx && \
             rm -rf out/clangd
+      - name: Upload TinyFish Browser Android arm64 APK
+        if: ${{ env.TARGET_OS == 'android' && env.TARGET_BUILD == 'arm64' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: TinyFish-Browser-Android-arm64
+          path: /home/lg/working_dir/chromium/src/out/arm64/apks/ChromePublic.apk
+          if-no-files-found: error
+          retention-days: 14
