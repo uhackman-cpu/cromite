@@ -1,0 +1,178 @@
+name: Build TinyFish Browser APK
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - .github/workflows/build-tinyfish-apk.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build-arm64-apk:
+    name: Build and sign TinyFish Browser (Android ARM64)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Android SDK build tools
+        uses: android-actions/setup-android@v3
+
+      - name: Download and verify official Cromite ARM64 base
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 4 --retry-delay 2 \
+            'https://github.com/uazo/cromite/releases/download/v153.0.8010.37-11507ac1061b5ea227806f5e84db5a57df6ccf6a/arm64_ChromePublic.apk' \
+            --output arm64_ChromePublic.apk
+          echo '9db12af1af021f42b4371e76d0e9fe476a7085bbbbc76bc410a538d028bf6071  arm64_ChromePublic.apk' | sha256sum --check
+          echo 'CROMITE_APK_SHA256=9db12af1af021f42b4371e76d0e9fe476a7085bbbbc76bc410a538d028bf6071' >> "$GITHUB_ENV"
+
+      - name: Download and verify Apktool
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 4 --retry-delay 2 \
+            'https://github.com/iBotPeaches/Apktool/releases/download/v3.0.3/apktool_3.0.3.jar' \
+            --output apktool.jar
+          echo 'dbf930b076c6b9be08d57c449cacefc3bdd6b71ebd59b3066fc0e1f5b14f9423  apktool.jar' | sha256sum --check
+
+      - name: Decode Android package
+        shell: bash
+        run: java -Xmx8g -jar apktool.jar d -f arm64_ChromePublic.apk -o decoded
+
+      - name: Apply TinyFish app name and package
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          root = Path("decoded")
+          manifest = root / "AndroidManifest.xml"
+          text = manifest.read_text(encoding="utf-8")
+          pkg = re.search(r'<manifest\b[^>]*\bpackage="([^"]+)"', text, re.S)
+          if not pkg:
+              raise SystemExit("Could not find the manifest package")
+          old_package = pkg.group(1)
+          new_package = "com.tinyfish.browser"
+          if old_package == new_package:
+              raise SystemExit("APK already has TinyFish package ID; unexpected base APK")
+
+          text, n = re.subn(
+              r'(<manifest\b[^>]*\bpackage=")[^"]+(")',
+              r'\g<1>' + new_package + r'\2',
+              text, count=1, flags=re.S
+          )
+          if n != 1:
+              raise SystemExit("Could not update package ID")
+          text, n = re.subn(
+              r'(<application\b[^>]*?\bandroid:label=")[^"]*(")',
+              r'\g<1>TinyFish Browser\2',
+              text, count=1, flags=re.S
+          )
+          if n != 1:
+              raise SystemExit("Could not update application label")
+          manifest.write_text(text, encoding="utf-8")
+
+          # Update matching literal provider authorities and package constants in
+          # decoded text/resources/smali. Binary assets are deliberately untouched.
+          text_suffixes = {
+              ".xml", ".smali", ".yml", ".yaml", ".txt", ".json",
+              ".properties", ".cfg", ".pro", ".mf", ".html", ".js"
+          }
+          changed = 0
+          for path in list(root.rglob("*")):
+              if not path.is_file() or path.suffix.lower() not in text_suffixes:
+                  continue
+              try:
+                  value = path.read_text(encoding="utf-8")
+              except (UnicodeDecodeError, OSError):
+                  continue
+              if old_package in value:
+                  path.write_text(value.replace(old_package, new_package), encoding="utf-8")
+                  changed += 1
+
+          # If the package is used as a smali namespace, move those folders too.
+          old_path = old_package.replace(".", "/")
+          new_path = new_package.replace(".", "/")
+          for path in sorted(root.rglob("*"), key=lambda p: len(p.parts), reverse=True):
+              path_str = str(path)
+              if old_path not in path_str:
+                  continue
+              destination = Path(path_str.replace(old_path, new_path))
+              destination.parent.mkdir(parents=True, exist_ok=True)
+              if path.exists() and not destination.exists():
+                  path.rename(destination)
+
+          final_manifest = manifest.read_text(encoding="utf-8")
+          if 'package="com.tinyfish.browser"' not in final_manifest:
+              raise SystemExit("TinyFish package ID check failed")
+          if 'android:label="TinyFish Browser"' not in final_manifest:
+              raise SystemExit("TinyFish app label check failed")
+          print(f"Changed package ID from {old_package} to {new_package}")
+          print("Changed application label to TinyFish Browser")
+          print(f"Updated package literals in {changed} decoded text files")
+          PY
+
+      - name: Rebuild APK
+        shell: bash
+        run: java -Xmx8g -jar apktool.jar b decoded -o TinyFish-Browser-unsigned.apk
+
+      - name: Align and sign APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager 'build-tools;36.0.0' >/dev/null
+          BT="$ANDROID_HOME/build-tools/36.0.0"
+          "$BT/zipalign" -p -f 4 TinyFish-Browser-unsigned.apk TinyFish-Browser-aligned.apk
+          PASS="tinyfish-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-local"
+          keytool -genkeypair -v \
+            -keystore tinyfish-build-key.jks \
+            -alias tinyfish \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname 'CN=TinyFish Browser, OU=Local Build, O=TinyFish, C=IN' \
+            -storepass "$PASS" -keypass "$PASS"
+          "$BT/apksigner" sign \
+            --ks tinyfish-build-key.jks \
+            --ks-key-alias tinyfish \
+            --ks-pass "pass:$PASS" \
+            --key-pass "pass:$PASS" \
+            --out TinyFish-Browser-arm64.apk \
+            TinyFish-Browser-aligned.apk
+          "$BT/apksigner" verify --verbose --print-certs TinyFish-Browser-arm64.apk
+          "$BT/aapt" dump badging TinyFish-Browser-arm64.apk | grep -E "^package:|^application-label:"
+          echo "APK_SHA256=$(sha256sum TinyFish-Browser-arm64.apk | cut -d' ' -f1)" >> "$GITHUB_ENV"
+          echo "APK_SIZE_BYTES=$(stat -c%s TinyFish-Browser-arm64.apk)" >> "$GITHUB_ENV"
+
+      - name: Write build information
+        shell: bash
+        run: |
+          cat > TinyFish-Browser-build-info.txt <<EOF
+          App label: TinyFish Browser
+          Android package: com.tinyfish.browser
+          Architecture: Android ARM64 (arm64-v8a)
+          Engine/base: Cromite v153.0.8010.37 (Chromium 153)
+          Source APK: https://github.com/uazo/cromite/releases/tag/v153.0.8010.37-11507ac1061b5ea227806f5e84db5a57df6ccf6a
+          Source APK SHA-256: $CROMITE_APK_SHA256
+          Output APK SHA-256: $APK_SHA256
+          Output size (bytes): $APK_SIZE_BYTES
+          Signing: temporary self-signed test certificate generated for this run
+          Note: this is a post-processed Chromium-based APK, not a from-source Chromium compilation.
+          EOF
+
+      - name: Upload installable APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: TinyFish-Browser-Android-ARM64
+          path: |
+            TinyFish-Browser-arm64.apk
+            TinyFish-Browser-build-info.txt
+          if-no-files-found: error
+          retention-days: 30
