@@ -56,7 +56,7 @@ env:
 
 jobs:
   check_images:
-    runs-on: ${{ env.RUNNER_TYPE }}
+    runs-on: ci
     steps:
       - name: Checkout repo
         uses: actions/checkout@v2
@@ -175,7 +175,7 @@ jobs:
           docker tag uazo/cromite-build:$VERSION-$CROMITE_SHA-tinyfish uazo/cromite-build:build
 
   build:
-    runs-on: ${{ env.RUNNER_TYPE }}
+    runs-on: ci
     needs: check_images
     if: success()
     timeout-minutes: 1440
@@ -197,15 +197,15 @@ jobs:
         WINDOWSSDKDIR: "/win_sdk/sdks/28000/Windows Kits/10/"
         GYP_MSVS_OVERRIDE_PATH: /win_sdk/sdks/28000/
         # compile in debug mode
-        TARGET_ISDEBUG: ${{ env.DEBUG_MODE }}
-        TARGET_OS: ${{ env.TARGET_OS }}
+        TARGET_ISDEBUG: ${{ github.event.inputs.debug || 'false' }}
+        TARGET_OS: ${{ github.event.inputs.target_os || 'android' }}
       volumes:
-        - /storage/images/${{ env.CROMITE_SHA }}/android/${{ env.DEBUG_MODE }}/arm:/home/lg/working_dir/chromium/src/out/arm
-        - /storage/images/${{ env.CROMITE_SHA }}/android/${{ env.DEBUG_MODE }}/arm64:/home/lg/working_dir/chromium/src/out/arm64
-        - /storage/images/${{ env.CROMITE_SHA }}/android/${{ env.DEBUG_MODE }}/x64:/home/lg/working_dir/chromium/src/out/x64
-        - /storage/images/${{ env.CROMITE_SHA }}/linux/${{ env.DEBUG_MODE }}/lin64:/home/lg/working_dir/chromium/src/out/lin64
-        - /storage/images/${{ env.CROMITE_SHA }}/win/x64:/home/lg/working_dir/chromium/src/out/win64
-        - /storage/images/${{ env.CROMITE_SHA }}/android/${{ env.DEBUG_MODE }}/arm64_webview:/home/lg/working_dir/chromium/src/out/arm64_webview
+        - /storage/images/${{ github.event.inputs.sha || '3724efc6ede3d2d94611c1fe71d1b090ebbb40a7' }}/android/${{ github.event.inputs.debug || 'false' }}/arm:/home/lg/working_dir/chromium/src/out/arm
+        - /storage/images/${{ github.event.inputs.sha || '3724efc6ede3d2d94611c1fe71d1b090ebbb40a7' }}/android/${{ github.event.inputs.debug || 'false' }}/arm64:/home/lg/working_dir/chromium/src/out/arm64
+        - /storage/images/${{ github.event.inputs.sha || '3724efc6ede3d2d94611c1fe71d1b090ebbb40a7' }}/android/${{ github.event.inputs.debug || 'false' }}/x64:/home/lg/working_dir/chromium/src/out/x64
+        - /storage/images/${{ github.event.inputs.sha || '3724efc6ede3d2d94611c1fe71d1b090ebbb40a7' }}/linux/${{ github.event.inputs.debug || 'false' }}/lin64:/home/lg/working_dir/chromium/src/out/lin64
+        - /storage/images/${{ github.event.inputs.sha || '3724efc6ede3d2d94611c1fe71d1b090ebbb40a7' }}/win/x64:/home/lg/working_dir/chromium/src/out/win64
+        - /storage/images/${{ github.event.inputs.sha || '3724efc6ede3d2d94611c1fe71d1b090ebbb40a7' }}/android/${{ github.event.inputs.debug || 'false' }}/arm64_webview:/home/lg/working_dir/chromium/src/out/arm64_webview
         - /tmp/proxy:/tmp/proxy
         - /win_sdk:/win_sdk
 
