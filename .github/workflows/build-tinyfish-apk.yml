@@ -79,23 +79,17 @@ jobs:
           )
           if n != 1:
               raise SystemExit("Could not update package ID")
-          app_match = re.search(r'<application\b[^>]*>', text, re.S)
-          if not app_match:
-              # Include a short safe diagnostic rather than silently guessing.
-              sample = text[text.find("<application")-80:text.find("<application")+300]
-              raise SystemExit("Could not find application element; manifest excerpt: " + repr(sample))
-          app_tag = app_match.group(0)
-          if re.search(r'\bandroid:label\s*=\s*"[^"]*"', app_tag):
-              app_tag, n = re.subn(
-                  r'(\bandroid:label\s*=\s*")[^"]*(")',
-                  r'\g<1>TinyFish Browser\2',
-                  app_tag, count=1, flags=re.S
-              )
-              if n != 1:
-                  raise SystemExit("Could not replace application label")
-          else:
-              app_tag = app_tag[:-1].rstrip() + ' android:label="TinyFish Browser">'
-          text = text[:app_match.start()] + app_tag + text[app_match.end():]
+          app_start = text.find("<application")
+          if app_start < 0:
+              raise SystemExit("Could not find application element")
+          app_end = text.find(">", app_start)
+          if app_end < 0:
+              raise SystemExit("Could not find end of application element")
+          app_tag = text[app_start:app_end + 1]
+          label_pattern = r'(?<![\w.-])(?:[A-Za-z_][A-Za-z0-9_.-]*:)?label\s*=\s*"[^"]*"'
+          app_tag = re.sub(label_pattern, "", app_tag)
+          app_tag = app_tag[:-1].rstrip() + ' android:label="TinyFish Browser">'
+          text = text[:app_start] + app_tag + text[app_end + 1:]
           root_start = text.find("<manifest")
           if root_start < 0:
               raise SystemExit("Could not locate manifest root tag")
