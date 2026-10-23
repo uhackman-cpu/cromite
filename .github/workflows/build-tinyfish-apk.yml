@@ -149,15 +149,33 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           import re
-          p = Path("decoded/AndroidManifest.xml")
-          s = p.read_text(encoding="utf-8")
-          # These are platform process-startup hints, not app identity or permissions.
-          # Apktool's bundled framework table doesn't define them; omit only these
-          # exact attributes so aapt2 can rebuild the otherwise-preserved manifest.
-          for name in ("zygotePreloadNativeLib", "nativeService"):
-              s, n = re.subn(r'\s+android:' + name + r'="[^"]*"', '', s)
-              print(f"Removed {n} unsupported android:{name} attribute(s)")
-          p.write_text(s, encoding="utf-8")
+          import xml.etree.ElementTree as ET
+
+          path = Path("decoded/AndroidManifest.xml")
+          source = path.read_text(encoding="utf-8")
+
+          # Preserve original XML namespace prefixes when writing the decoded manifest.
+          for prefix, uri in re.findall(r'xmlns(?::([\w.-]+))?="([^"]+)"', source):
+              ET.register_namespace(prefix or "", uri)
+
+          root = ET.fromstring(source)
+          android_ns = "{http://schemas.android.com/apk/res/android}"
+          removed = {"zygotePreloadNativeLib": 0, "nativeService": 0}
+          for element in root.iter():
+              for key in list(element.attrib):
+                  for name in removed:
+                      if key == android_ns + name:
+                          del element.attrib[key]
+                          removed[name] += 1
+
+          print("Removed unsupported Android manifest attributes:", removed)
+          if not removed["zygotePreloadNativeLib"] or not removed["nativeService"]:
+              raise SystemExit("Expected unsupported attributes were not found; refusing to rebuild")
+          path.write_text(
+              '<?xml version="1.0" encoding="utf-8"?>\n' +
+              ET.tostring(root, encoding="unicode", short_empty_elements=True),
+              encoding="utf-8",
+          )
           PY
 
       - name: Rebuild APK
