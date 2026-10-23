@@ -213,7 +213,8 @@ jobs:
 
           existing = []
           for path in decoded.glob("smali_classes*"):
-              match = re.fullmatch(r"smali_classes(\\d+)", path.name)
+              suffix = path.name[len("smali_classes"):]
+              if suffix.isdigit(): existing.append(int(suffix))
               if match:
                   existing.append(int(match.group(1)))
           dex_number = max(existing, default=1) + 1
