@@ -238,7 +238,7 @@ jobs:
 
           manifest = decoded / "AndroidManifest.xml"
           source = manifest.read_text(encoding="utf-8")
-          for prefix, uri in re.findall(r'xmlns(?::([\\w.-]+))?="([^"]+)"', source):
+          for prefix, uri in re.findall(r'xmlns(?::([\w.-]+))?="([^"]+)"', source):
               ET.register_namespace(prefix or "", uri)
           tree = ET.ElementTree(ET.fromstring(source))
           root = tree.getroot()
