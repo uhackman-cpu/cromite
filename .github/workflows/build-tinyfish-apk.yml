@@ -28,7 +28,12 @@ jobs:
           if [ ! -x "$SDKMANAGER" ]; then SDKMANAGER="$(command -v sdkmanager)"; fi
           "$SDKMANAGER" --version
           yes | "$SDKMANAGER" --licenses >/dev/null || true
-          "$SDKMANAGER" 'build-tools;36.0.0'
+          "$SDKMANAGER" 'platforms;android-35' 'build-tools;36.0.0'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
 
       - name: Download and verify official Cromite ARM64 base
         shell: bash
@@ -48,6 +53,13 @@ jobs:
             'https://github.com/iBotPeaches/Apktool/releases/download/v3.0.3/apktool_3.0.3.jar' \
             --output apktool.jar
           echo 'dbf930b076c6b9be08d57c449cacefc3bdd6b71ebd59b3066fc0e1f5b14f9423  apktool.jar' | sha256sum --check
+
+      - name: Build TinyFish automation bridge bytecode
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle -p tinyfish-bridge --no-daemon --stacktrace assembleDebug
+          test -s tinyfish-bridge/app/build/outputs/apk/debug/app-debug.apk
 
       - name: Decode Android package
         shell: bash
@@ -178,6 +190,112 @@ jobs:
           )
           PY
 
+      - name: Merge TinyFish agent-control service into browser APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          java -Xmx2g -jar apktool.jar d -f tinyfish-bridge/app/build/outputs/apk/debug/app-debug.apk -o bridge-decoded
+          python3 - <<'PY'
+          from pathlib import Path
+          import shutil
+          import re
+          import xml.etree.ElementTree as ET
+
+          decoded = Path("decoded")
+          bridge = Path("bridge-decoded")
+          class_dirs = []
+          for smali_root in bridge.glob("smali*"):
+              candidate = smali_root / "com/tinyfish/browser/bridge"
+              if candidate.is_dir():
+                  class_dirs.append(candidate)
+          if not class_dirs:
+              raise SystemExit("Bridge classes not found in built helper APK")
+
+          existing = []
+          for path in decoded.glob("smali_classes*"):
+              match = re.fullmatch(r"smali_classes(\\d+)", path.name)
+              if match:
+                  existing.append(int(match.group(1)))
+          dex_number = max(existing, default=1) + 1
+          dest = decoded / f"smali_classes{dex_number}" / "com/tinyfish/browser/bridge"
+          dest.mkdir(parents=True, exist_ok=True)
+          class_count = 0
+          for src in class_dirs:
+              for item in src.iterdir():
+                  target = dest / item.name
+                  if item.is_dir():
+                      shutil.copytree(item, target, dirs_exist_ok=True)
+                  else:
+                      shutil.copy2(item, target)
+                  class_count += 1
+          if class_count < 2:
+              raise SystemExit("Expected TinyFish activity and Accessibility service classes")
+
+          config_src = Path("tinyfish-bridge/app/src/main/res/xml/tinyfish_accessibility_config.xml")
+          config_dest = decoded / "res/xml/tinyfish_accessibility_config.xml"
+          config_dest.parent.mkdir(parents=True, exist_ok=True)
+          shutil.copy2(config_src, config_dest)
+
+          manifest = decoded / "AndroidManifest.xml"
+          source = manifest.read_text(encoding="utf-8")
+          for prefix, uri in re.findall(r'xmlns(?::([\\w.-]+))?="([^"]+)"', source):
+              ET.register_namespace(prefix or "", uri)
+          tree = ET.ElementTree(ET.fromstring(source))
+          root = tree.getroot()
+          android = "{http://schemas.android.com/apk/res/android}"
+
+          if not any(e.tag in ("uses-permission", "uses-permission-sdk-23")
+                     and e.get(android + "name") == "android.permission.INTERNET" for e in root):
+              root.insert(0, ET.Element("uses-permission", {android + "name": "android.permission.INTERNET"}))
+
+          app = root.find("application")
+          if app is None:
+              raise SystemExit("AndroidManifest.xml has no application element")
+
+          activity_name = "com.tinyfish.browser.bridge.MainActivity"
+          service_name = "com.tinyfish.browser.bridge.TinyFishAccessibilityService"
+          activities = [e for e in app.findall("activity") if e.get(android + "name") == activity_name]
+          if not activities:
+              activity = ET.SubElement(app, "activity", {
+                  android + "name": activity_name,
+                  android + "exported": "true",
+                  android + "label": "TinyFish Control",
+                  android + "theme": "@android:style/Theme.Material.Light.NoActionBar"
+              })
+              filt = ET.SubElement(activity, "intent-filter")
+              ET.SubElement(filt, "action", {android + "name": "android.intent.action.MAIN"})
+              ET.SubElement(filt, "category", {android + "name": "android.intent.category.LAUNCHER"})
+
+          services = [e for e in app.findall("service") if e.get(android + "name") == service_name]
+          if not services:
+              service = ET.SubElement(app, "service", {
+                  android + "name": service_name,
+                  android + "exported": "true",
+                  android + "label": "TinyFish Agent Control",
+                  android + "permission": "android.permission.BIND_ACCESSIBILITY_SERVICE"
+              })
+              filt = ET.SubElement(service, "intent-filter")
+              ET.SubElement(filt, "action", {android + "name": "android.accessibilityservice.AccessibilityService"})
+              ET.SubElement(service, "meta-data", {
+                  android + "name": "android.accessibilityservice",
+                  android + "resource": "@xml/tinyfish_accessibility_config"
+              })
+
+          manifest.write_text('<?xml version="1.0" encoding="utf-8"?>\\n' +
+                              ET.tostring(root, encoding="unicode", short_empty_elements=True),
+                              encoding="utf-8")
+
+          check = ET.parse(manifest).getroot()
+          app = check.find("application")
+          names = {e.get(android + "name") for tag in ("activity", "service") for e in app.findall(tag)}
+          if activity_name not in names or service_name not in names:
+              raise SystemExit("Control components missing after manifest merge")
+          if not config_dest.is_file():
+              raise SystemExit("Accessibility service configuration missing")
+          print(f"Added {class_count} bridge class files under {dest.parent.parent}")
+          print("Merged launcher activity and authenticated Accessibility API service")
+          PY
+
       - name: Rebuild APK
         shell: bash
         run: java -Xmx8g -jar apktool.jar b decoded -o TinyFish-Browser-unsigned.apk
@@ -220,6 +338,9 @@ jobs:
           Output APK SHA-256: $APK_SHA256
           Output size (bytes): $APK_SIZE_BYTES
           Signing: temporary self-signed test certificate generated for this run
+          TinyFish control: authenticated Accessibility-based API on 127.0.0.1:8765
+          API endpoints: GET /v1/health, GET /v1/snapshot, GET /v1/openapi, POST /v1/navigate, POST /v1/action
+          Security: API requires generated bearer token and binds to loopback only; user must enable TinyFish Agent Control in Accessibility Settings
           Note: this is a post-processed Chromium-based APK, not a from-source Chromium compilation.
           EOF
 
@@ -230,5 +351,6 @@ jobs:
           path: |
             TinyFish-Browser-arm64.apk
             TinyFish-Browser-build-info.txt
+            tinyfish-bridge/README.md
           if-no-files-found: error
           retention-days: 30
