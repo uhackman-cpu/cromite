@@ -186,7 +186,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          yes | sdkmanager 'build-tools;36.0.0' >/dev/null
           BT="$ANDROID_HOME/build-tools/36.0.0"
           "$BT/zipalign" -p -f 4 TinyFish-Browser-unsigned.apk TinyFish-Browser-aligned.apk
           PASS="tinyfish-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-local"
