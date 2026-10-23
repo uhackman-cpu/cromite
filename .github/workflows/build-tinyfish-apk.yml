@@ -215,8 +215,6 @@ jobs:
           for path in decoded.glob("smali_classes*"):
               suffix = path.name[len("smali_classes"):]
               if suffix.isdigit(): existing.append(int(suffix))
-              if match:
-                  existing.append(int(match.group(1)))
           dex_number = max(existing, default=1) + 1
           dest = decoded / f"smali_classes{dex_number}" / "com/tinyfish/browser/bridge"
           dest.mkdir(parents=True, exist_ok=True)
