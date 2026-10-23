@@ -142,6 +142,24 @@ jobs:
           print(f"Updated package literals in {changed} decoded text files")
           PY
 
+      - name: Normalize Android 16 manifest-only attributes for Apktool
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p = Path("decoded/AndroidManifest.xml")
+          s = p.read_text(encoding="utf-8")
+          # These are platform process-startup hints, not app identity or permissions.
+          # Apktool's bundled framework table doesn't define them; omit only these
+          # exact attributes so aapt2 can rebuild the otherwise-preserved manifest.
+          for name in ("zygotePreloadNativeLib", "nativeService"):
+              s, n = re.subn(r'\\s+android:' + name + r'="[^"]*"', '', s)
+              print(f"Removed {n} unsupported android:{name} attribute(s)")
+          p.write_text(s, encoding="utf-8")
+          PY
+
       - name: Rebuild APK
         shell: bash
         run: java -Xmx8g -jar apktool.jar b decoded -o TinyFish-Browser-unsigned.apk
