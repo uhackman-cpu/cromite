@@ -20,6 +20,11 @@ jobs:
           distribution: temurin
           java-version: '21'
 
+      - name: Checkout TinyFish Browser source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
       - name: Install Android SDK build tools
         shell: bash
         run: |
