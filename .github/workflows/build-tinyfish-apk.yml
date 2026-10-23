@@ -281,7 +281,7 @@ jobs:
                   android + "resource": "@xml/tinyfish_accessibility_config"
               })
 
-          manifest.write_text('<?xml version="1.0" encoding="utf-8"?>\\n' +
+          manifest.write_text('<?xml version="1.0" encoding="utf-8"?>\n' +
                               ET.tostring(root, encoding="unicode", short_empty_elements=True),
                               encoding="utf-8")
 
