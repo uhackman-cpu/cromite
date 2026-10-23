@@ -155,7 +155,7 @@ jobs:
           # Apktool's bundled framework table doesn't define them; omit only these
           # exact attributes so aapt2 can rebuild the otherwise-preserved manifest.
           for name in ("zygotePreloadNativeLib", "nativeService"):
-              s, n = re.subn(r'\\s+android:' + name + r'="[^"]*"', '', s)
+              s, n = re.subn(r'\s+android:' + name + r'="[^"]*"', '', s)
               print(f"Removed {n} unsupported android:{name} attribute(s)")
           p.write_text(s, encoding="utf-8")
           PY
